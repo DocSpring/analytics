@@ -1,3 +1,9 @@
+> [!NOTE]
+> This is DocSpring's fork, derived from Plausible Analytics and not affiliated with Plausible Insights OÜ. The
+> `docspring` branch is Plausible CE v3.2.1, modified in November 2026 so the IP block list accepts CIDR ranges.
+> `git log v3.2.1..docspring` lists every change. It's licensed under AGPLv3, like the original, and the original's
+> README follows.
+
 # Plausible Analytics
 
 <p align="center">
