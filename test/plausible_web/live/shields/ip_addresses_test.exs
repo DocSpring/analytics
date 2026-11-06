@@ -162,6 +162,49 @@ defmodule PlausibleWeb.Live.Shields.IPAddressesTest do
       assert to_string(ip) == "1.1.1.1"
     end
 
+    test "submitting a CIDR range saves and lists it", %{conn: conn, site: site} do
+      lv = get_liveview(conn, site)
+
+      lv
+      |> element("form")
+      |> render_submit(%{
+        "ip_rule[inet]" => "1.1.1.0/24",
+        "ip_rule[description]" => "A happy range"
+      })
+
+      html = render(lv)
+
+      assert html =~ "1.1.1.0/24"
+      assert html =~ "A happy range"
+
+      assert [%{inet: inet, description: "A happy range"}] = Shields.list_ip_rules(site)
+      assert to_string(inet) == "1.1.1.0/24"
+    end
+
+    test "an IPv6 range with a netmask of 32 is listed with its netmask", %{
+      conn: conn,
+      site: site
+    } do
+      lv = get_liveview(conn, site)
+
+      lv
+      |> element("form")
+      |> render_submit(%{"ip_rule[inet]" => "2001:db8::/32"})
+
+      assert render(lv) =~ "2001:db8::/32"
+    end
+
+    test "submitting a range that is too wide renders error", %{conn: conn, site: site} do
+      lv = get_liveview(conn, site)
+
+      lv
+      |> element("form")
+      |> render_submit(%{"ip_rule[inet]" => "0.0.0.0/0"})
+
+      assert render(lv) =~ "netmask must be between /8 and /32"
+      assert [] = Shields.list_ip_rules(site)
+    end
+
     test "submitting invalid IP renders error", %{conn: conn, site: site} do
       lv = get_liveview(conn, site)
 

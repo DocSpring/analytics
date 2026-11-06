@@ -71,8 +71,13 @@ defmodule Plausible.Shields do
       %Shield.IPRule{action: :deny} ->
         true
 
-      _ ->
+      %Shield.IPRule{action: :allow} ->
         false
+
+      nil ->
+        domain
+        |> Shield.IPRuleCache.get_ranges()
+        |> Shield.IPRule.any_range_blocks?(address)
     end
   end
 

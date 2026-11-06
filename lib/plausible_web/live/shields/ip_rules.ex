@@ -33,7 +33,7 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
         <.tile docs="excluding">
           <:title>IP block list</:title>
           <:subtitle :if={not Enum.empty?(@ip_rules)}>
-            Reject incoming traffic from specific IP addresses.
+            Reject incoming traffic from specific IP addresses or ranges.
           </:subtitle>
 
           <%= if Enum.empty?(@ip_rules) do %>
@@ -42,7 +42,7 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
                 Block an IP address
               </h3>
               <p class="text-center text-sm mt-1 text-gray-500 dark:text-gray-400 leading-5 text-pretty">
-                Reject incoming traffic from specific IP addresses.
+                Reject incoming traffic from specific IP addresses or ranges.
                 <.styled_link href="https://plausible.io/docs/excluding" target="_blank">
                   Learn more
                 </.styled_link>
@@ -172,8 +172,8 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
                     <.input
                       data-autofocus
                       field={f[:inet]}
-                      label="IP address"
-                      placeholder="e.g. 192.168.127.12"
+                      label="IP address or CIDR range"
+                      placeholder="e.g. 192.168.127.12 or 192.168.127.0/24"
                     />
                   </div>
 
