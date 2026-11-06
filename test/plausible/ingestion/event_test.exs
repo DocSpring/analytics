@@ -233,6 +233,45 @@ defmodule Plausible.Ingestion.EventTest do
     assert dropped.drop_reason == :site_ip_blocklist
   end
 
+  test "drops a request when ip is inside a blocked range" do
+    site = new_site()
+
+    payload = %{
+      name: "pageview",
+      url: "http://dummy.site",
+      domain: site.domain
+    }
+
+    conn = build_conn(:post, "/api/events", payload)
+    conn = %{conn | remote_ip: {127, 7, 7, 7}}
+
+    {:ok, _} = Plausible.Shields.add_ip_rule(site, %{"inet" => "127.7.7.0/24"})
+
+    assert {:ok, request, _conn} = Request.build(conn)
+
+    assert {:ok, %{buffered: [], dropped: [dropped]}} = Event.build_and_buffer(request)
+    assert dropped.drop_reason == :site_ip_blocklist
+  end
+
+  test "keeps a request when ip is outside a blocked range" do
+    site = new_site()
+
+    payload = %{
+      name: "pageview",
+      url: "http://dummy.site",
+      domain: site.domain
+    }
+
+    conn = build_conn(:post, "/api/events", payload)
+    conn = %{conn | remote_ip: {127, 7, 8, 7}}
+
+    {:ok, _} = Plausible.Shields.add_ip_rule(site, %{"inet" => "127.7.7.0/24"})
+
+    assert {:ok, request, _conn} = Request.build(conn)
+
+    assert {:ok, %{buffered: [_event], dropped: []}} = Event.build_and_buffer(request)
+  end
+
   test "drops a request when country is on blocklist" do
     site = new_site()
 

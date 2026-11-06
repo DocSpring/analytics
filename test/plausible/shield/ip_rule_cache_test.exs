@@ -71,6 +71,105 @@ defmodule Plausible.Shield.IPRuleCacheTest do
       refute IPRuleCache.get({domain, "1.1.1.1"}, cache_opts)
       assert %IPRule{} = IPRuleCache.get({domain, "2.2.2.2"}, cache_opts)
     end
+
+    test "caches a site's ranges together, under both of its domains", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      cache_opts = [cache_name: test, force?: true]
+
+      site = insert(:site, domain: "new.example.com", domain_changed_from: "old.example.com")
+      other_site = insert(:site, domain: "other.example.com")
+
+      {:ok, %{id: rid1}} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.0/24"})
+      {:ok, %{id: rid2}} = Shields.add_ip_rule(site, %{"inet" => "2001:db8::/32"})
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "3.3.3.3"})
+      {:ok, %{id: rid3}} = Shields.add_ip_rule(other_site, %{"inet" => "4.4.4.0/24"})
+
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      for domain <- ["new.example.com", "old.example.com"] do
+        ranges = IPRuleCache.get_ranges(domain, cache_opts)
+
+        assert Enum.all?(ranges, &match?(%IPRule{from_cache?: true}, &1))
+        assert Enum.sort(Enum.map(ranges, & &1.id)) == Enum.sort([rid1, rid2])
+        assert %IPRule{} = IPRuleCache.get({domain, "3.3.3.3"}, cache_opts)
+        refute IPRuleCache.get({domain, "1.1.1.0"}, cache_opts)
+      end
+
+      assert [%IPRule{id: ^rid3}] = IPRuleCache.get_ranges("other.example.com", cache_opts)
+      assert IPRuleCache.get_ranges("unknown.example.com", cache_opts) == []
+    end
+
+    test "a partial refresh leaves the ranges already cached in place", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      cache_opts = [cache_name: test, force?: true]
+
+      site = insert(:site, domain: "site1.example.com")
+
+      {:ok, %{id: rid1}} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.0/24"})
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      {:ok, %{id: rid2}} = Shields.add_ip_rule(site, %{"inet" => "2.2.2.0/24"})
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "3.3.3.3"})
+
+      :ok = IPRuleCache.refresh_updated_recently(cache_opts)
+
+      assert [%IPRule{id: ^rid1}] = IPRuleCache.get_ranges(site.domain, cache_opts)
+      assert %IPRule{} = IPRuleCache.get({site.domain, "3.3.3.3"}, cache_opts)
+
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      assert Enum.sort(Enum.map(IPRuleCache.get_ranges(site.domain, cache_opts), & &1.id)) ==
+               Enum.sort([rid1, rid2])
+    end
+
+    test "a removed range leaves the cache at the next full refresh", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      cache_opts = [cache_name: test, force?: true]
+
+      site = insert(:site, domain: "site1.example.com")
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "2.2.2.2"})
+
+      {:ok, %{id: rid}} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.0/24"})
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+      assert [%IPRule{id: ^rid}] = IPRuleCache.get_ranges(site.domain, cache_opts)
+
+      :ok = Shields.remove_ip_rule(site, rid)
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      assert IPRuleCache.get_ranges(site.domain, cache_opts) == []
+    end
+
+    test "Shields finds addresses and ranges in the cache", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      cache_opts = [cache_name: test, force?: true]
+
+      site = insert(:site, domain: "site1.example.com")
+
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.1"})
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "2.2.2.0/24"})
+      insert(:ip_rule, site: site, inet: "2.2.2.7", action: :allow)
+
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      assert Shields.ip_blocked?(site, "1.1.1.1", cache_opts)
+      assert Shields.ip_blocked?(site, "2.2.2.8", cache_opts)
+      assert Shields.ip_blocked?(site.domain, "::ffff:2.2.2.8", cache_opts)
+
+      refute Shields.ip_blocked?(site, "2.2.2.7", cache_opts)
+      refute Shields.ip_blocked?(site, "3.3.3.3", cache_opts)
+      refute Shields.ip_blocked?(site, "not-an-ip", cache_opts)
+      refute Shields.ip_blocked?(site, <<255, 254>>, cache_opts)
+    end
+
+    test "is ready when a site has only ranges", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      site = insert(:site, domain: "site1.example.com")
+
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.0/24"})
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      assert IPRuleCache.ready?(test)
+    end
   end
 
   defp start_test_cache(cache_name) do
