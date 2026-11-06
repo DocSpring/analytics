@@ -89,7 +89,7 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
                   <.td max_width="max-w-40">
                     <div class="flex items-center truncate">
                       <span
-                        :if={to_string(rule.inet) == @remote_ip}
+                        :if={Shield.IPRule.any_covers?([rule], @remote_ip)}
                         class="inline-flex items-center gap-x-1.5 rounded-md px-2 mr-2 py-1 text-xs font-medium text-gray-700 dark:text-white ring-1 ring-inset ring-gray-300 dark:ring-gray-700"
                       >
                         <svg class="h-1.5 w-1.5 fill-green-400" viewBox="0 0 6 6" aria-hidden="true">
@@ -159,7 +159,7 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
                 >
                   <div>
                     <p
-                      :if={not ip_rule_present?(@ip_rules, @remote_ip)}
+                      :if={not Shield.IPRule.any_covers?(@ip_rules, @remote_ip)}
                       class="text-sm text-gray-500 dark:text-gray-400 mb-4"
                     >
                       Your current IP address is: <span class="font-mono"><%= @remote_ip %></span>.
@@ -265,10 +265,6 @@ defmodule PlausibleWeb.Live.Shields.IPRules do
     %Shield.IPRule{}
     |> Shield.IPRule.changeset(%{})
     |> to_form()
-  end
-
-  defp ip_rule_present?(rules, ip) do
-    not is_nil(Enum.find(rules, &(to_string(&1.inet) == ip)))
   end
 
   defp format_added_at(dt, tz) do

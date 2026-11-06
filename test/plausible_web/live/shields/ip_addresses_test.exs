@@ -90,6 +90,19 @@ defmodule PlausibleWeb.Live.Shields.IPAddressesTest do
       assert element_exists?(html, ~s/a[phx-click="prefill-own-ip-rule"]/)
     end
 
+    test "a range covering your own IP is marked and hides the link to add it", %{
+      site: site,
+      conn: conn
+    } do
+      ip = PlausibleWeb.RemoteIP.get(conn)
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "#{ip}/24"})
+
+      html = conn |> get_liveview(site) |> render()
+
+      assert text(html) =~ "YOU"
+      refute element_exists?(html, ~s/a[phx-click="prefill-own-ip-rule"]/)
+    end
+
     test "form modal does not contain link to add own IP if already added", %{
       site: site,
       conn: conn

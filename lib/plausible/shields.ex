@@ -61,13 +61,15 @@ defmodule Plausible.Shields do
     end
   end
 
-  @spec ip_blocked?(Site.t() | String.t(), String.t()) :: boolean()
-  def ip_blocked?(%Site{domain: domain}, address) do
-    ip_blocked?(domain, address)
+  @spec ip_blocked?(Site.t() | String.t(), String.t(), Keyword.t()) :: boolean()
+  def ip_blocked?(site_or_domain, address, cache_opts \\ [])
+
+  def ip_blocked?(%Site{domain: domain}, address, cache_opts) do
+    ip_blocked?(domain, address, cache_opts)
   end
 
-  def ip_blocked?(domain, address) when is_binary(domain) and is_binary(address) do
-    case Shield.IPRuleCache.get({domain, address}) do
+  def ip_blocked?(domain, address, cache_opts) when is_binary(domain) and is_binary(address) do
+    case Shield.IPRuleCache.get({domain, address}, cache_opts) do
       %Shield.IPRule{action: :deny} ->
         true
 
@@ -76,8 +78,9 @@ defmodule Plausible.Shields do
 
       nil ->
         domain
-        |> Shield.IPRuleCache.get_ranges()
-        |> Shield.IPRule.any_range_blocks?(address)
+        |> Shield.IPRuleCache.get_ranges(cache_opts)
+        |> Enum.filter(&(&1.action == :deny))
+        |> Shield.IPRule.any_covers?(address)
     end
   end
 

@@ -139,6 +139,28 @@ defmodule Plausible.Shield.IPRuleCacheTest do
       assert IPRuleCache.get_ranges(site.domain, cache_opts) == []
     end
 
+    test "Shields finds addresses and ranges in the cache", %{test: test} do
+      {:ok, _} = start_test_cache(test)
+      cache_opts = [cache_name: test, force?: true]
+
+      site = insert(:site, domain: "site1.example.com")
+
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "1.1.1.1"})
+      {:ok, _} = Shields.add_ip_rule(site, %{"inet" => "2.2.2.0/24"})
+      insert(:ip_rule, site: site, inet: "2.2.2.7", action: :allow)
+
+      :ok = IPRuleCache.refresh_all(cache_name: test)
+
+      assert Shields.ip_blocked?(site, "1.1.1.1", cache_opts)
+      assert Shields.ip_blocked?(site, "2.2.2.8", cache_opts)
+      assert Shields.ip_blocked?(site.domain, "::ffff:2.2.2.8", cache_opts)
+
+      refute Shields.ip_blocked?(site, "2.2.2.7", cache_opts)
+      refute Shields.ip_blocked?(site, "3.3.3.3", cache_opts)
+      refute Shields.ip_blocked?(site, "not-an-ip", cache_opts)
+      refute Shields.ip_blocked?(site, <<255, 254>>, cache_opts)
+    end
+
     test "is ready when a site has only ranges", %{test: test} do
       {:ok, _} = start_test_cache(test)
       site = insert(:site, domain: "site1.example.com")

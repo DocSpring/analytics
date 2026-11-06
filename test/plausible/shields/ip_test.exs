@@ -23,7 +23,6 @@ defmodule Plausible.Shields.IPTest do
       assert {:ok, _} = add_ip_rule(site, %{"inet" => "127.0.0.0/32"})
       assert {:ok, _} = add_ip_rule(site, %{"inet" => "10.0.0.0/8"})
       assert {:ok, _} = add_ip_rule(site, %{"inet" => "2001:db8::/32"})
-      assert {:ok, _} = add_ip_rule(site, %{"inet" => "2001::/16"})
     end
 
     test "rejects ranges wider than /8 for IPv4", %{site: site} do
@@ -33,10 +32,10 @@ defmodule Plausible.Shields.IPTest do
       end
     end
 
-    test "rejects ranges wider than /16 for IPv6", %{site: site} do
-      for inet <- ["::/0", "2001::/15"] do
+    test "rejects ranges wider than /32 for IPv6", %{site: site} do
+      for inet <- ["::/0", "2001:db8::/31"] do
         assert {:error, changeset} = add_ip_rule(site, %{"inet" => inet})
-        assert changeset.errors == [inet: {"netmask must be between /16 and /128", []}]
+        assert changeset.errors == [inet: {"netmask must be between /32 and /128", []}]
       end
     end
 
@@ -226,6 +225,19 @@ defmodule Plausible.Shields.IPTest do
       assert ip_blocked?(site, "203.0.113.8")
     end
 
+    test "a range that allows traffic doesn't block it", %{site: site} do
+      insert(:ip_rule, site: site, inet: "203.0.113.0/24", action: :allow)
+
+      refute ip_blocked?(site, "203.0.113.7")
+    end
+
+    test "an IPv4 address mapped to IPv6 is inside its IPv4 range", %{site: site} do
+      {:ok, _} = add_ip_rule(site, %{"inet" => "203.0.113.0/24"})
+
+      assert ip_blocked?(site, "::ffff:203.0.113.7")
+      refute ip_blocked?(site, "::ffff:203.0.114.7")
+    end
+
     test "a removed range stops blocking", %{site: site} do
       {:ok, rule} = add_ip_rule(site, %{"inet" => "203.0.113.0/24"})
       assert ip_blocked?(site, "203.0.113.7")
@@ -235,7 +247,7 @@ defmodule Plausible.Shields.IPTest do
     end
   end
 
-  describe "IPRule.any_range_blocks?/2" do
+  describe "IPRule.any_covers?/2" do
     setup do
       rule = %IPRule{
         inet: %Postgrex.INET{address: {203, 0, 113, 0}, netmask: 24},
@@ -251,21 +263,24 @@ defmodule Plausible.Shields.IPTest do
         action: :deny
       }
 
-      assert IPRule.any_range_blocks?([rule, other_rule], "198.51.100.7")
-      refute IPRule.any_range_blocks?([rule, other_rule], "192.0.2.7")
+      assert IPRule.any_covers?([rule, other_rule], "198.51.100.7")
+      refute IPRule.any_covers?([rule, other_rule], "192.0.2.7")
     end
 
-    test "is false without any ranges" do
-      refute IPRule.any_range_blocks?([], "203.0.113.7")
+    test "finds an address in a rule for that one address" do
+      rule = %IPRule{inet: %Postgrex.INET{address: {192, 0, 2, 7}, netmask: 32}}
+
+      assert IPRule.any_covers?([rule], "192.0.2.7")
+      refute IPRule.any_covers?([rule], "192.0.2.8")
     end
 
-    test "ignores ranges that allow traffic", %{rule: rule} do
-      refute IPRule.any_range_blocks?([%{rule | action: :allow}], "203.0.113.7")
+    test "is false without any rules" do
+      refute IPRule.any_covers?([], "203.0.113.7")
     end
 
     test "is false, and doesn't raise, for anything that isn't an address", %{rule: rule} do
       for address <- ["", "not-an-ip", "203.0.113", "203.0.113.7/24", <<255, 254>>] do
-        refute IPRule.any_range_blocks?([rule], address)
+        refute IPRule.any_covers?([rule], address)
       end
     end
   end
